@@ -80,11 +80,15 @@ func (lb *LoadBalancer) getNextServer() *server.Server {
 func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Track total requests
 	metrics.GlobalMetrics.IncTotal()
+	// Prometheus: increment total requests counter
+	metrics.RequestsTotal.Inc()
 
 	srv := lb.getNextServer()
 	if srv == nil {
 		http.Error(w, "Service Unavailable: all backend servers are down", http.StatusServiceUnavailable)
 		metrics.GlobalMetrics.IncFailed()
+		// Prometheus: increment failed requests counter when no backend available
+		metrics.RequestsFailed.Inc()
 		return
 	}
 
@@ -92,6 +96,8 @@ func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Track request to this backend server
 	atomic.AddUint64(&srv.Requests, 1)
+	// Prometheus: increment per-backend request counter
+	metrics.BackendRequests.WithLabelValues(srv.ID).Inc()
 
 	// Wrap the response writer to capture status code
 	wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}

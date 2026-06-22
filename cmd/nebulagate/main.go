@@ -4,10 +4,13 @@ import (
 	"context"
 	"log"
 	"net/http"
+
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/SaisrikarVollala/nebulagate/internal/balancer"
 	"github.com/SaisrikarVollala/nebulagate/internal/config"
@@ -50,15 +53,19 @@ func main() {
 		log.Fatalf("failed to create load balancer: %v", err)
 	}
 
-	// Create router
+	// Create router and expose Prometheus endpoint
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", metrics.NewHandler(servers))
-	mux.Handle("/", lb)
+	// Register Prometheus metrics collectors
+	metrics.RegisterPrometheusMetrics()
+	mux.Handle("/metrics", promhttp.Handler())
+	// Also expose the original JSON metrics at /metrics/json
+	mux.HandleFunc("/metrics/json", metrics.NewHandler(servers))
+	mux.Handle("/", middleware.Recovery(lb))
 
 	// Create HTTP server
 	httpServer := &http.Server{
 		Addr:    ":8080",
-		Handler: middleware.Recovery(mux),
+		Handler: mux,
 	}
 
 	// Start NebulaGate
